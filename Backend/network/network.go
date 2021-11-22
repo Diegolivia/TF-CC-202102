@@ -184,8 +184,47 @@ func HandleConnection(conn net.Conn, chain *blockchain.BlockChain) {
 	fmt.Printf("Received %s command\n", command)
 
 	switch command {
+	case "addr":
+		HandleAddr(req)
+	case "block":
+		HandleBlock(req, chain)
+	case "inv":
+		HandleInv(req, chain)
+	case "getblocks":
+		HandleGetBlocks(req, chain)
+	case "getdata":
+		HandleGetData(req, chain)
+	case "tx":
+		HandleTx(req, chain)
+	case "version":
+		HandleVersion(req, chain)
 	default:
 		fmt.Println("Unknown command")
+	}
+}
+
+func StartServer(nodeID, mineraddress string) {
+	nodeAddress = fmt.Sprintf("localhost:", nodeID)
+	minerAddress = mineraddress
+	ln, err := net.Listen(protocol, nodeAddress)
+	if err != nil {
+		log.Panic(err)
+	}
+	defer ln.Close()
+
+	chain := blockchain.ContinueBlockChain(nodeID)
+	defer chain.Database.Close()
+	go CloseDB(chain)
+
+	if nodeAddress != KnownNodes[0] {
+		SendVersion(KnownNodes[0], chain)
+	}
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			log.Panic(err)
+		}
+		go HandleConnection(conn, chain)
 	}
 }
 
@@ -201,6 +240,38 @@ func HandleAddr(request []byte) {
 	KnownNodes = append(KnownNodes, payload.AddrList...)
 	fmt.Printf("there are %d known nodes\n", len(KnownNodes))
 	RequestBlocks()
+}
+
+func HandleInv(request []byte, chain *blockchain.BlockChain) {
+	var buff bytes.Buffer
+	var payload Inv
+	buff.Write(request[commandLength:])
+	dec := gob.NewDecoder(&buff)
+	err := dec.Decode(&payload)
+	if err != nil {
+		log.Panic(err)
+	}
+	fmt.Printf("Recevied inventory with %d %s\n", len(payload.Items), payload.Type)
+	if payload.Type == "block" {
+		blocksInTransit = payload.Items
+
+		blockHash := payload.Items[0]
+		SendGetData(payload.AddrFrom, "block", blockHash)
+
+		newInTransit := [][]byte{}
+		for _, b := range blocksInTransit {
+			if bytes.Compare(b, blockHash) != 0 {
+				newInTransit = append(newInTransit, b)
+			}
+		}
+		blocksInTransit = newInTransit
+	}
+	if payload.Type == "tx" {
+		txID := payload.Items[0]
+		if memoryPool[hex.EncodeToString(txID)].ID == nil {
+			SendGetData(payload.AddrFrom, "tx", txID)
+		}
+	}
 }
 
 func HandleBlock(request []byte, chain *blockchain.BlockChain) {
