@@ -34,6 +34,7 @@ func DBexists(path string) bool {
 
 func ContinueBlockChain(nodeID string) *BlockChain {
 	path := fmt.Sprintf(dbPath, nodeID)
+	fmt.Println(path)
 	if !DBexists(path) {
 		fmt.Println("NO existing blockchain foun, create one!")
 		runtime.Goexit()
@@ -69,9 +70,9 @@ func InitBlockChain(address, nodeID string) *BlockChain {
 
 	var lastHash []byte
 
-	opts := badger.DefaultOptions(dbPath)
-	opts.Dir = dbPath
-	opts.ValueDir = dbPath
+	opts := badger.DefaultOptions(path)
+	opts.Dir = path
+	opts.ValueDir = path
 	db, err := openDB(path, opts)
 	Handle(err)
 	err = db.Update(func(txn *badger.Txn) error {
